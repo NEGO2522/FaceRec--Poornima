@@ -35,13 +35,11 @@ const Dashboard = ({ csvData = [], onBack }) => {
     };
 
     searchFilteredData.forEach(row => {
-      // Mapping "Door Name" from CSV
       const rawDoor = row['Door Name'] || row.door || "Unknown Lane";
       if (rawDoor && String(rawDoor).toLowerCase() !== 'nan') {
         res.doorMap[rawDoor] = (res.doorMap[rawDoor] || 0) + 1;
       }
 
-      // Rush Hour / Chart Logic
       const hour = row.time ? row.time.split(':')[0] : "00";
       const slot = `${hour}:00 - ${parseInt(hour) + 1}:00`;
       res.hourMap[slot] = (res.hourMap[slot] || 0) + 1;
@@ -49,11 +47,19 @@ const Dashboard = ({ csvData = [], onBack }) => {
       const chartHour = hour + ":00";
       let existingHour = res.hourlyChart.find(h => h.hour === chartHour);
       if (!existingHour) {
-        existingHour = { hour: chartHour, entries: 0, exits: 0 };
+        existingHour = { hour: chartHour, entries: 0, exits: 0, late: 0 };
         res.hourlyChart.push(existingHour);
       }
-      if (row.status === 'Inside') existingHour.entries++;
-      else existingHour.exits++;
+      
+      if (row.status === 'Inside') {
+        existingHour.entries++;
+        // Calculate Late entries for the graph
+        if (row.time > '09:15:00') {
+          existingHour.late++;
+        }
+      } else {
+        existingHour.exits++;
+      }
     });
 
     res.peakHours = Object.entries(res.hourMap)
@@ -75,7 +81,6 @@ const Dashboard = ({ csvData = [], onBack }) => {
 
   return (
     <div className="min-h-screen bg-[#0f1115] text-white flex font-sans antialiased overflow-hidden">
-      {/* Import for Cosmic-style font */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;900&display=swap');
         .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -84,8 +89,6 @@ const Dashboard = ({ csvData = [], onBack }) => {
       
       <aside className="w-64 bg-[#1a1d23] border-r border-gray-800 flex flex-col hidden lg:flex shrink-0">
         <div className="p-6 flex flex-col h-full">
-          
-          {/* Poornima University acting as the Back Button */}
           <button 
             onClick={onBack}
             className="cosmic-font text-blue-500 text-lg font-black mb-12 tracking-widest text-left hover:text-blue-400 hover:scale-105 transition-all active:scale-95 px-2"
@@ -157,11 +160,75 @@ const Dashboard = ({ csvData = [], onBack }) => {
                       <XAxis dataKey="hour" stroke="#4a5568" fontSize={10} tickLine={false} axisLine={false} />
                       <YAxis stroke="#4a5568" fontSize={10} tickLine={false} axisLine={false} />
                       <Tooltip contentStyle={{backgroundColor: '#1a1d23', border: '1px solid #334155', borderRadius: '12px'}} />
-                      <Area type="monotone" dataKey="entries" name="IN" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.1} strokeWidth={3} />
-                      <Area type="monotone" dataKey="exits" name="OUT" stroke="#ef4444" fill="#ef4444" fillOpacity={0.05} strokeWidth={2} />
+                      
+                      {/* Entry Line: Shown in Overview and Inside */}
+                      {(activeTab === 'Overview' || activeTab === 'Inside') && (
+                        <Area type="monotone" dataKey="entries" name="IN" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.1} strokeWidth={3} />
+                      )}
+                      
+                      {/* Exit Line: Shown in Overview and Outside */}
+                      {(activeTab === 'Overview' || activeTab === 'Outside') && (
+                        <Area type="monotone" dataKey="exits" name="OUT" stroke="#ef4444" fill="#ef4444" fillOpacity={0.05} strokeWidth={2} />
+                      )}
+
+                      {/* Late Line: Now also shown in Overview */}
+                      {(activeTab === 'Overview' || activeTab === 'Late') && (
+                        <Area type="monotone" dataKey="late" name="LATE" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.1} strokeWidth={3} />
+                      )}
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
+              </div>
+
+              <div className="bg-[#1a1d23] rounded-[2.5rem] border border-gray-800 overflow-hidden w-full">
+                <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900/30">
+                  <span className="font-bold text-xs uppercase tracking-widest text-gray-500">Log History</span>
+                  <button onClick={() => setShowDetailList(!showDetailList)} className="text-[10px] font-black uppercase text-blue-500 hover:text-white px-4 py-1.5 rounded-lg bg-blue-500/10 transition-all">
+                    {showDetailList ? "Hide Table" : "Show Table"}
+                  </button>
+                </div>
+                {showDetailList && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead className="bg-gray-900/50 text-[9px] uppercase text-gray-500">
+                        <tr>
+                          <th className="px-8 py-5">User Profile</th>
+                          <th className="px-8 py-5">Punch Details</th>
+                          <th className="px-8 py-5">Gate Lane</th>
+                          <th className="px-8 py-5 text-right">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-800/50">
+                        {finalTableData.map((log, i) => (
+                          <tr key={i} className="hover:bg-blue-500/5 transition-colors group">
+                            <td className="px-8 py-4">
+                              <div className="font-black text-gray-200 text-sm group-hover:text-white">{log.name || 'N/A'}</div>
+                              <div className="text-[10px] text-blue-500 font-mono tracking-tighter">{log.uid}</div>
+                            </td>
+                            <td className="px-8 py-4">
+                              <div className="text-xs text-gray-300 font-bold">{log.time}</div>
+                              <div className="text-[9px] text-gray-600 font-bold">{log.date}</div>
+                            </td>
+                            <td className="px-8 py-4">
+                               <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase">
+                                 <MapPin size={10} className="text-gray-600" /> {log['Door Name'] || log.door || 'Gate 1'}
+                               </div>
+                            </td>
+                            <td className="px-8 py-4 text-right">
+                               <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${
+                                 log.status === 'Inside' 
+                                 ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-500' 
+                                 : 'bg-red-500/5 border-red-500/20 text-red-500'
+                               }`}>
+                                 {log.status === 'Inside' ? 'Entry' : 'Exit'}
+                               </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -183,57 +250,6 @@ const Dashboard = ({ csvData = [], onBack }) => {
                 )}
               </div>
             </div>
-          </div>
-
-          <div className="bg-[#1a1d23] rounded-[2.5rem] border border-gray-800 overflow-hidden">
-            <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900/30">
-              <span className="font-bold text-xs uppercase tracking-widest text-gray-500">Log History</span>
-              <button onClick={() => setShowDetailList(!showDetailList)} className="text-[10px] font-black uppercase text-blue-500 hover:text-white px-4 py-1.5 rounded-lg bg-blue-500/10 transition-all">
-                {showDetailList ? "Hide Table" : "Show Table"}
-              </button>
-            </div>
-            {showDetailList && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-gray-900/50 text-[9px] uppercase text-gray-500">
-                    <tr>
-                      <th className="px-8 py-5">User Profile</th>
-                      <th className="px-8 py-5">Punch Details</th>
-                      <th className="px-8 py-5">Gate Lane</th>
-                      <th className="px-8 py-5 text-right">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-800/50">
-                    {finalTableData.map((log, i) => (
-                      <tr key={i} className="hover:bg-blue-500/5 transition-colors group">
-                        <td className="px-8 py-4">
-                          <div className="font-black text-gray-200 text-sm group-hover:text-white">{log.name || 'N/A'}</div>
-                          <div className="text-[10px] text-blue-500 font-mono tracking-tighter">{log.uid}</div>
-                        </td>
-                        <td className="px-8 py-4">
-                          <div className="text-xs text-gray-300 font-bold">{log.time}</div>
-                          <div className="text-[9px] text-gray-600 font-bold">{log.date}</div>
-                        </td>
-                        <td className="px-8 py-4">
-                           <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase">
-                             <MapPin size={10} className="text-gray-600" /> {log['Door Name'] || log.door || 'Gate 1'}
-                           </div>
-                        </td>
-                        <td className="px-8 py-4 text-right">
-                           <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${
-                             log.status === 'Inside' 
-                             ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-500' 
-                             : 'bg-red-500/5 border-red-500/20 text-red-500'
-                           }`}>
-                             {log.status === 'Inside' ? 'Entry' : 'Exit'}
-                           </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
         </div>
       </main>
